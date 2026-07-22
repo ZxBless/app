@@ -88,9 +88,9 @@ function buildHTML(records: WorkRecord[], dateRange?: { from: string; to: string
   return `
   <html><head><meta charset="utf-8"><style>
     body { font-family: -apple-system, 'Segoe UI', sans-serif; margin: 40px; color: #1a1a1a; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #F5A300; padding-bottom: 16px; margin-bottom: 24px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #FF6B00; padding-bottom: 16px; margin-bottom: 24px; }
     .header h1 { font-size: 32px; margin: 0; font-weight: 900; letter-spacing: -0.5px; }
-    .header .brand { color: #F5A300; }
+    .header .brand { color: #FF6B00; }
     .header .date { color: #666; font-size: 14px; margin-top: 4px; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 32px; margin-bottom: 28px; background: #f9f9f9; border-radius: 8px; padding: 16px 20px; }
     .info-item { display: flex; gap: 8px; font-size: 14px; }
@@ -98,20 +98,20 @@ function buildHTML(records: WorkRecord[], dateRange?: { from: string; to: string
     .info-item .value { font-weight: 700; }
     h2 { font-size: 16px; font-weight: 800; margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 28px; }
-    thead th { background: #1a1a1a; color: #F5A300; padding: 10px 8px; text-align: left; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    thead th { background: #1A1A1A; color: #FF6B00; padding: 10px 8px; text-align: left; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
     thead th.center { text-align: center; }
     thead th.right { text-align: right; }
     tbody td { padding: 8px; border-bottom: 1px solid #e0e0e0; }
-    tbody tr:nth-child(even) { background: #faf8f2; }
+    tbody tr:nth-child(even) { background: #FFF7F0; }
     .summary { background: #1a1a1a; border-radius: 10px; padding: 20px 24px; color: #fff; }
-    .summary h2 { color: #F5A300; margin-bottom: 16px; }
+    .summary h2 { color: #FF6B00; margin-bottom: 16px; }
     .summary-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 15px; }
     .summary-row .label { color: rgba(255,255,255,0.7); }
     .summary-row .value { font-weight: 700; }
     .summary-divider { height: 1px; background: rgba(255,255,255,0.15); margin: 8px 0; }
-    .grand-total { display: flex; justify-content: space-between; padding-top: 16px; margin-top: 8px; border-top: 2px solid #F5A300; }
+    .grand-total { display: flex; justify-content: space-between; padding-top: 16px; margin-top: 8px; border-top: 2px solid #FF6B00; }
     .grand-total .label { font-size: 18px; font-weight: 900; }
-    .grand-total .value { font-size: 24px; font-weight: 900; color: #F5A300; }
+    .grand-total .value { font-size: 24px; font-weight: 900; color: #FF6B00; }
     .footer { margin-top: 32px; text-align: center; color: #999; font-size: 12px; }
   </style></head><body>
     <div class="header"><div>

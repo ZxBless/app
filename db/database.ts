@@ -24,6 +24,28 @@ export interface Settings {
   weeklyGoalHours: number;
 }
 
+export interface PersistedSegment {
+  workType: WorkType;
+  startTs: number;
+  startTime: string;
+  endTime: string | null;
+  ms: number;
+}
+
+export interface TimerState {
+  status: 'running' | 'paused';
+  activeWorkType: WorkType;
+  shiftStartTs: number;
+  shiftStartTime: string;
+  currentSegmentStartTs: number | null;
+  currentSegmentStartTime: string | null;
+  segments: PersistedSegment[];
+  client: string | null;
+  project: string | null;
+  operator: string | null;
+  observation: string | null;
+}
+
 const DB_NAME = 'maquiche.db';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
@@ -52,6 +74,11 @@ async function getDB(): Promise<SQLite.SQLiteDatabase> {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS timer_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     );
   `);
   await seedSettings(dbInstance);
@@ -205,4 +232,32 @@ export async function saveSettings(s: Settings): Promise<void> {
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
     ['weekly_goal_hours', String(s.weeklyGoalHours)]
   );
+}
+
+export async function saveTimerState(state: TimerState): Promise<void> {
+  const db = await getDB();
+  const data = JSON.stringify(state);
+  await db.runAsync(
+    `INSERT INTO timer_state (id, data, updated_at) VALUES (1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`,
+    [data, Date.now()]
+  );
+}
+
+export async function loadTimerState(): Promise<TimerState | null> {
+  const db = await getDB();
+  const row = await db.getFirstAsync<{ data: string }>(
+    'SELECT data FROM timer_state WHERE id=1'
+  );
+  if (!row) return null;
+  try {
+    return JSON.parse(row.data) as TimerState;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearTimerState(): Promise<void> {
+  const db = await getDB();
+  await db.runAsync('DELETE FROM timer_state WHERE id=1');
 }

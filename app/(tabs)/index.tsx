@@ -6,35 +6,37 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
-  AppState,
-  AppStateStatus,
+  Platform,
 } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Save, Pickaxe, Hammer, RotateCcw } from 'lucide-react-native';
-import { colors, radius, spacing } from '@/theme/theme';
-import { getSettings, insertRecord, type WorkType, type Settings } from '@/db/database';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Play, Pause, Square, Save, Pickaxe, Hammer, RotateCcw, Coffee } from 'lucide-react-native';
+import { colors, radius, spacing, shadow } from '@/theme/theme';
+import {
+  getSettings,
+  insertRecord,
+  saveTimerState,
+  loadTimerState,
+  clearTimerState,
+  type WorkType,
+  type Settings,
+  type TimerState,
+  type PersistedSegment,
+} from '@/db/database';
 import {
   formatHours,
   formatCurrency,
   todayString,
-  nowTimeString,
+  tsToTimeString,
   WORK_TYPE_LABELS,
 } from '@/utils/calculations';
 
-type TimerState = 'idle' | 'running' | 'paused' | 'stopped';
+type ScreenState = 'idle' | 'running' | 'paused' | 'stopped';
 
 interface Segment {
   workType: WorkType;
   ms: number;
   startTime: string;
   endTime: string;
-}
-
-function tsToTimeString(ts: number): string {
-  const d = new Date(ts);
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
 }
 
 function formatDuration(totalMs: number): string {
@@ -46,8 +48,16 @@ function formatDuration(totalMs: number): string {
   return `${h} h ${m} min`;
 }
 
+function formatTimer(totalMs: number): string {
+  const totalSec = Math.floor(totalMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 export default function CronometroScreen() {
-  const [state, setState] = useState<TimerState>('idle');
+  const [screenState, setScreenState] = useState<ScreenState>('idle');
   const [activeWorkType, setActiveWorkType] = useState<WorkType>('excavacion');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [shiftStartDisplay, setShiftStartDisplay] = useState('');
@@ -57,14 +67,15 @@ export default function CronometroScreen() {
   const [client, setClient] = useState('');
   const [project, setProject] = useState('');
   const [operator, setOperator] = useState('');
+  const [restored, setRestored] = useState(false);
 
   const segmentsRef = useRef<Segment[]>([]);
   const currentSegmentRef = useRef<{ workType: WorkType; startTs: number; startTime: string } | null>(null);
   const shiftStartRef = useRef('');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const persistenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const computePerToolMs = () => {
+  const computePerToolMs = useCallback(() => {
     const result = { excavacion: 0, martillo: 0 };
     for (const seg of segmentsRef.current) {
       result[seg.workType] += seg.ms;
@@ -73,9 +84,9 @@ export default function CronometroScreen() {
       result[currentSegmentRef.current.workType] += Date.now() - currentSegmentRef.current.startTs;
     }
     return result;
-  };
+  }, []);
 
-  const closeCurrentSegment = (): Segment | null => {
+  const closeCurrentSegment = useCallback((): Segment | null => {
     if (currentSegmentRef.current === null) return null;
     const endTs = Date.now();
     const seg: Segment = {
@@ -86,7 +97,34 @@ export default function CronometroScreen() {
     };
     currentSegmentRef.current = null;
     return seg;
-  };
+  }, []);
+
+  const buildPersistableState = useCallback((): TimerState => {
+    return {
+      status: screenState === 'stopped' ? 'paused' : (screenState as 'running' | 'paused'),
+      activeWorkType,
+      shiftStartTs: shiftStartRef.current ? Date.now() - elapsedMs : 0,
+      shiftStartTime: shiftStartRef.current,
+      currentSegmentStartTs: currentSegmentRef.current?.startTs ?? null,
+      currentSegmentStartTime: currentSegmentRef.current?.startTime ?? null,
+      segments: segmentsRef.current.map((s): PersistedSegment => ({
+        workType: s.workType,
+        startTs: 0,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        ms: s.ms,
+      })),
+      client: client.trim() || null,
+      project: project.trim() || null,
+      operator: operator.trim() || null,
+      observation: observation.trim() || null,
+    };
+  }, [screenState, activeWorkType, elapsedMs, client, project, operator, observation]);
+
+  const persistState = useCallback(async () => {
+    if (screenState === 'idle' || screenState === 'stopped') return;
+    await saveTimerState(buildPersistableState());
+  }, [screenState, buildPersistableState]);
 
   useEffect(() => {
     getSettings().then((s: Settings) =>
@@ -94,23 +132,45 @@ export default function CronometroScreen() {
     );
   }, []);
 
+  // Restore timer state on mount
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (
-        appStateRef.current.match(/inactive|background/) &&
-        nextState === 'active' &&
-        currentSegmentRef.current !== null
-      ) {
+    (async () => {
+      const saved = await loadTimerState();
+      if (saved && (saved.status === 'running' || saved.status === 'paused')) {
+        const restoredSegments: Segment[] = saved.segments.map((s) => ({
+          workType: s.workType,
+          ms: s.ms,
+          startTime: s.startTime,
+          endTime: s.endTime ?? tsToTimeString(Date.now()),
+        }));
+        segmentsRef.current = restoredSegments;
+
+        if (saved.status === 'running' && saved.currentSegmentStartTs) {
+          currentSegmentRef.current = {
+            workType: saved.activeWorkType,
+            startTs: saved.currentSegmentStartTs,
+            startTime: saved.currentSegmentStartTime ?? tsToTimeString(saved.currentSegmentStartTs),
+          };
+        }
+        setActiveWorkType(saved.activeWorkType);
+        shiftStartRef.current = saved.shiftStartTime;
+        setShiftStartDisplay(saved.shiftStartTime);
+        if (saved.client) setClient(saved.client);
+        if (saved.project) setProject(saved.project);
+        if (saved.operator) setOperator(saved.operator);
+        if (saved.observation) setObservation(saved.observation);
+        setScreenState(saved.status === 'running' ? 'running' : 'paused');
+
         const perTool = computePerToolMs();
         setElapsedMs(perTool.excavacion + perTool.martillo);
       }
-      appStateRef.current = nextState;
-    });
-    return () => sub.remove();
-  }, []);
+      setRestored(true);
+    })();
+  }, [computePerToolMs]);
 
+  // Tick interval for running state
   useEffect(() => {
-    if (state === 'running') {
+    if (screenState === 'running') {
       intervalRef.current = setInterval(() => {
         const perTool = computePerToolMs();
         setElapsedMs(perTool.excavacion + perTool.martillo);
@@ -124,7 +184,37 @@ export default function CronometroScreen() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [state]);
+  }, [screenState, computePerToolMs]);
+
+  // Auto-persist every 5 seconds while running
+  useEffect(() => {
+    if (screenState === 'running' || screenState === 'paused') {
+      persistenceTimerRef.current = setInterval(() => {
+        persistState();
+      }, 5000);
+    } else {
+      if (persistenceTimerRef.current) {
+        clearInterval(persistenceTimerRef.current);
+        persistenceTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (persistenceTimerRef.current) clearInterval(persistenceTimerRef.current);
+    };
+  }, [screenState, persistState]);
+
+  // Persist on unmount / background
+  useEffect(() => {
+    const handler = () => {
+      if (Platform.OS === 'web') {
+        if (document.visibilityState === 'hidden') persistState();
+      }
+    };
+    if (Platform.OS === 'web') {
+      document.addEventListener('visibilitychange', handler);
+      return () => document.removeEventListener('visibilitychange', handler);
+    }
+  }, [persistState]);
 
   const handleStart = () => {
     const now = Date.now();
@@ -137,13 +227,17 @@ export default function CronometroScreen() {
     shiftStartRef.current = tsToTimeString(now);
     setShiftStartDisplay(tsToTimeString(now));
     setElapsedMs(0);
-    setState('running');
+    setScreenState('running');
+    saveTimerState(buildPersistableState());
   };
 
   const handlePause = () => {
     const seg = closeCurrentSegment();
     if (seg) segmentsRef.current.push(seg);
-    setState('paused');
+    setScreenState('paused');
+    const perTool = computePerToolMs();
+    setElapsedMs(perTool.excavacion + perTool.martillo);
+    saveTimerState(buildPersistableState());
   };
 
   const handleResume = () => {
@@ -153,7 +247,8 @@ export default function CronometroScreen() {
       startTs: now,
       startTime: tsToTimeString(now),
     };
-    setState('running');
+    setScreenState('running');
+    saveTimerState(buildPersistableState());
   };
 
   const handleStop = () => {
@@ -161,21 +256,22 @@ export default function CronometroScreen() {
     if (seg) segmentsRef.current.push(seg);
     const perTool = computePerToolMs();
     setElapsedMs(perTool.excavacion + perTool.martillo);
-    setState('stopped');
+    setScreenState('stopped');
+    clearTimerState();
   };
 
   const handleToolSwitch = (newType: WorkType) => {
-    if (state === 'idle') {
+    if (screenState === 'idle') {
       setActiveWorkType(newType);
       return;
     }
-    if (state === 'stopped') return;
+    if (screenState === 'stopped') return;
     if (newType === activeWorkType) return;
 
     const seg = closeCurrentSegment();
     if (seg) segmentsRef.current.push(seg);
 
-    if (state === 'running') {
+    if (screenState === 'running') {
       const now = Date.now();
       currentSegmentRef.current = {
         workType: newType,
@@ -184,19 +280,21 @@ export default function CronometroScreen() {
       };
     }
     setActiveWorkType(newType);
+    saveTimerState(buildPersistableState());
   };
 
   const handleReset = () => {
     segmentsRef.current = [];
     currentSegmentRef.current = null;
     shiftStartRef.current = '';
-    setState('idle');
+    setScreenState('idle');
     setElapsedMs(0);
     setShiftStartDisplay('');
     setObservation('');
     setClient('');
     setProject('');
     setOperator('');
+    clearTimerState();
   };
 
   const handleSave = async () => {
@@ -229,20 +327,16 @@ export default function CronometroScreen() {
         });
       }
       handleReset();
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'No se pudo guardar el registro.');
     } finally {
       setSaving(false);
     }
   };
 
-  const formatTimer = (totalMs: number) => {
-    const totalSec = Math.floor(totalMs / 1000);
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    const s = totalSec % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
+  if (!restored) {
+    return <View style={styles.screen} />;
+  }
 
   const perToolMs = computePerToolMs();
   const totalMs = perToolMs.excavacion + perToolMs.martillo;
@@ -251,8 +345,7 @@ export default function CronometroScreen() {
   const excPayment = excHours * rates.excavacion;
   const martPayment = martHours * rates.martillo;
   const totalPayment = excPayment + martPayment;
-
-  const canSwitchTools = state === 'idle' || state === 'running' || state === 'paused';
+  const canSwitchTools = screenState === 'idle' || screenState === 'running' || screenState === 'paused';
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -263,6 +356,7 @@ export default function CronometroScreen() {
           style={[styles.typeBtn, activeWorkType === 'excavacion' && styles.typeBtnActive]}
           onPress={() => handleToolSwitch('excavacion')}
           disabled={!canSwitchTools}
+          activeOpacity={0.7}
         >
           <Pickaxe
             size={28}
@@ -281,6 +375,7 @@ export default function CronometroScreen() {
           style={[styles.typeBtn, activeWorkType === 'martillo' && styles.typeBtnActive]}
           onPress={() => handleToolSwitch('martillo')}
           disabled={!canSwitchTools}
+          activeOpacity={0.7}
         >
           <Hammer
             size={28}
@@ -296,13 +391,14 @@ export default function CronometroScreen() {
         </TouchableOpacity>
       </View>
 
-      {state === 'running' && (
+      {screenState === 'running' && (
         <Text style={styles.switchHint}>Toca una herramienta para cambiar sin detener</Text>
       )}
 
       <View style={styles.timerCard}>
-        {state === 'paused' && (
+        {screenState === 'paused' && (
           <View style={styles.pausedBadge}>
+            <Coffee size={14} color={colors.black} strokeWidth={3} />
             <Text style={styles.pausedBadgeText}>EN PAUSA</Text>
           </View>
         )}
@@ -314,16 +410,16 @@ export default function CronometroScreen() {
           <Text style={styles.timerSubtext}>Presiona iniciar para comenzar</Text>
         )}
 
-        {(state === 'running' || state === 'paused') && (
+        {(screenState === 'running' || screenState === 'paused') && (
           <>
             <View style={styles.timerDivider} />
-            <Text style={styles.timerLabel}>Ganado hasta ahora</Text>
+            <Text style={styles.timerLabel}>Ganado en tiempo real</Text>
             <Text style={styles.paymentDisplay}>{formatCurrency(totalPayment)}</Text>
           </>
         )}
       </View>
 
-      {(state === 'running' || state === 'paused') && (
+      {(screenState === 'running' || screenState === 'paused') && (
         <View style={styles.breakdownCard}>
           <Text style={styles.breakdownTitle}>Desglose por herramienta</Text>
           <View style={[styles.breakdownRow, activeWorkType === 'excavacion' && styles.breakdownRowActive]}>
@@ -349,7 +445,7 @@ export default function CronometroScreen() {
         </View>
       )}
 
-      {state === 'idle' && (
+      {screenState === 'idle' && (
         <>
           <View style={styles.metaCard}>
             <Text style={styles.metaTitle}>Datos del turno (opcional)</Text>
@@ -385,40 +481,40 @@ export default function CronometroScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.startBtn} onPress={handleStart}>
-            <Play size={28} color={colors.black} strokeWidth={2.5} fill={colors.black} />
+          <TouchableOpacity style={styles.startBtn} onPress={handleStart} activeOpacity={0.85}>
+            <Play size={28} color={colors.white} strokeWidth={2.5} fill={colors.white} />
             <Text style={styles.startBtnText}>Iniciar</Text>
           </TouchableOpacity>
         </>
       )}
 
-      {state === 'running' && (
+      {screenState === 'running' && (
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.pauseBtn} onPress={handlePause}>
-            <Pause size={26} color={colors.yellow} strokeWidth={2.5} fill={colors.yellow} />
+          <TouchableOpacity style={styles.pauseBtn} onPress={handlePause} activeOpacity={0.85}>
+            <Pause size={26} color={colors.white} strokeWidth={2.5} fill={colors.white} />
             <Text style={styles.pauseBtnText}>Pausar</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
+          <TouchableOpacity style={styles.stopBtn} onPress={handleStop} activeOpacity={0.85}>
             <Square size={26} color={colors.red} strokeWidth={2.5} fill={colors.red} />
             <Text style={styles.stopBtnText}>Detener</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {state === 'paused' && (
+      {screenState === 'paused' && (
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.startBtn} onPress={handleResume}>
-            <Play size={26} color={colors.black} strokeWidth={2.5} fill={colors.black} />
+          <TouchableOpacity style={styles.startBtn} onPress={handleResume} activeOpacity={0.85}>
+            <Play size={26} color={colors.white} strokeWidth={2.5} fill={colors.white} />
             <Text style={styles.startBtnText}>Continuar</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
+          <TouchableOpacity style={styles.stopBtn} onPress={handleStop} activeOpacity={0.85}>
             <Square size={26} color={colors.red} strokeWidth={2.5} fill={colors.red} />
             <Text style={styles.stopBtnText}>Detener</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {state === 'stopped' && (
+      {screenState === 'stopped' && (
         <>
           <View style={styles.segmentsCard}>
             <Text style={styles.segmentsTitle}>Tramos del turno</Text>
@@ -430,9 +526,9 @@ export default function CronometroScreen() {
                 <View key={i} style={styles.segmentRow}>
                   <View style={styles.segmentHeader}>
                     {seg.workType === 'excavacion' ? (
-                      <Pickaxe size={16} color={colors.yellow} strokeWidth={2.5} />
+                      <Pickaxe size={16} color={colors.orange} strokeWidth={2.5} />
                     ) : (
-                      <Hammer size={16} color={colors.yellow} strokeWidth={2.5} />
+                      <Hammer size={16} color={colors.orange} strokeWidth={2.5} />
                     )}
                     <Text style={styles.segmentToolName}>
                       {WORK_TYPE_LABELS[seg.workType]}
@@ -468,7 +564,7 @@ export default function CronometroScreen() {
             {perToolMs.excavacion > 0 && (
               <View style={styles.summaryRow}>
                 <View style={styles.summaryLeft}>
-                  <Pickaxe size={18} color={colors.yellow} strokeWidth={2.5} />
+                  <Pickaxe size={18} color={colors.orange} strokeWidth={2.5} />
                   <Text style={styles.summaryName}>{WORK_TYPE_LABELS.excavacion}</Text>
                 </View>
                 <Text style={styles.summaryHours}>{formatHours(excHours)}</Text>
@@ -479,7 +575,7 @@ export default function CronometroScreen() {
             {perToolMs.martillo > 0 && (
               <View style={styles.summaryRow}>
                 <View style={styles.summaryLeft}>
-                  <Hammer size={18} color={colors.yellow} strokeWidth={2.5} />
+                  <Hammer size={18} color={colors.orange} strokeWidth={2.5} />
                   <Text style={styles.summaryName}>{WORK_TYPE_LABELS.martillo}</Text>
                 </View>
                 <Text style={styles.summaryHours}>{formatHours(martHours)}</Text>
@@ -525,13 +621,13 @@ export default function CronometroScreen() {
           )}
 
           <View style={styles.stoppedActions}>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
-              <Save size={24} color={colors.yellow} strokeWidth={2.5} />
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
+              <Save size={24} color={colors.white} strokeWidth={2.5} />
               <Text style={styles.saveText}>
                 {saving ? 'Guardando...' : 'Guardar Registro'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.discardBtn} onPress={handleReset}>
+            <TouchableOpacity style={styles.discardBtn} onPress={handleReset} activeOpacity={0.85}>
               <RotateCcw size={22} color={colors.grayText} strokeWidth={2.5} />
               <Text style={styles.discardText}>Descartar</Text>
             </TouchableOpacity>
@@ -552,8 +648,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   screenTitle: {
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '900',
     color: colors.textDark,
     marginBottom: spacing.md,
   },
@@ -571,10 +667,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.grayBorder,
     paddingVertical: spacing.lg,
+    ...shadow.card,
   },
   typeBtnActive: {
-    backgroundColor: colors.yellow,
-    borderColor: colors.yellowDark,
+    backgroundColor: colors.orange,
+    borderColor: colors.orange,
   },
   typeLabel: {
     fontSize: 15,
@@ -598,7 +695,7 @@ const styles = StyleSheet.create({
   switchHint: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.yellowDark,
+    color: colors.orangeDark,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
@@ -609,9 +706,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
     marginBottom: spacing.md,
+    ...shadow.cardLg,
   },
   pausedBadge: {
-    backgroundColor: colors.yellow,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.orange,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -632,9 +733,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   timerDisplay: {
-    fontSize: 56,
+    fontSize: 60,
     fontWeight: '900',
-    color: colors.yellow,
+    color: colors.orange,
     fontVariant: ['tabular-nums'],
   },
   timerSubtext: {
@@ -651,7 +752,7 @@ const styles = StyleSheet.create({
   paymentDisplay: {
     fontSize: 36,
     fontWeight: '900',
-    color: colors.yellow,
+    color: colors.orange,
     fontVariant: ['tabular-nums'],
   },
   breakdownCard: {
@@ -661,6 +762,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     borderWidth: 2,
     borderColor: colors.grayBorder,
+    ...shadow.card,
   },
   breakdownTitle: {
     fontSize: 14,
@@ -679,7 +781,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   breakdownRowActive: {
-    backgroundColor: colors.yellowDim,
+    backgroundColor: colors.orangeDim,
   },
   breakdownLeft: {
     flexDirection: 'row',
@@ -705,18 +807,20 @@ const styles = StyleSheet.create({
   breakdownPayment: {
     fontSize: 15,
     fontWeight: '800',
-    color: colors.yellowDark,
+    color: colors.orangeDark,
     minWidth: 80,
     textAlign: 'right',
   },
   startBtn: {
+    flex: 1,
     flexDirection: 'row',
-    backgroundColor: colors.yellow,
+    backgroundColor: colors.orange,
     borderRadius: radius.lg,
     paddingVertical: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
+    ...shadow.button,
   },
   metaCard: {
     backgroundColor: colors.white,
@@ -725,6 +829,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     borderWidth: 2,
     borderColor: colors.grayBorder,
+    ...shadow.card,
   },
   metaTitle: {
     fontSize: 14,
@@ -755,7 +860,7 @@ const styles = StyleSheet.create({
   startBtnText: {
     fontSize: 20,
     fontWeight: '900',
-    color: colors.black,
+    color: colors.white,
   },
   actionRow: {
     flexDirection: 'row',
@@ -770,15 +875,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
+    ...shadow.button,
   },
   pauseBtnText: {
     fontSize: 18,
     fontWeight: '800',
-    color: colors.yellow,
+    color: colors.orange,
   },
   stopBtn: {
     flex: 1,
     flexDirection: 'row',
+    backgroundColor: colors.white,
     borderRadius: radius.lg,
     paddingVertical: spacing.lg,
     alignItems: 'center',
@@ -799,6 +906,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderWidth: 2,
     borderColor: colors.grayBorder,
+    ...shadow.card,
   },
   segmentsTitle: {
     fontSize: 14,
@@ -853,7 +961,7 @@ const styles = StyleSheet.create({
   segmentDetailValueBold: {
     fontSize: 15,
     fontWeight: '800',
-    color: colors.yellowDark,
+    color: colors.orangeDark,
     fontVariant: ['tabular-nums'],
   },
   summaryCard: {
@@ -861,6 +969,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
+    ...shadow.cardLg,
   },
   summaryTitle: {
     fontSize: 16,
@@ -894,7 +1003,7 @@ const styles = StyleSheet.create({
   summaryPayment: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.yellow,
+    color: colors.orange,
     width: 100,
     textAlign: 'right',
   },
@@ -924,7 +1033,7 @@ const styles = StyleSheet.create({
   summaryTotalPayment: {
     fontSize: 22,
     fontWeight: '900',
-    color: colors.yellow,
+    color: colors.orange,
     width: 100,
     textAlign: 'right',
   },
@@ -936,7 +1045,7 @@ const styles = StyleSheet.create({
   obsToggleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.yellowDark,
+    color: colors.orangeDark,
   },
   observation: {
     backgroundColor: colors.white,
@@ -960,11 +1069,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
+    ...shadow.button,
   },
   saveText: {
     fontSize: 18,
     fontWeight: '800',
-    color: colors.yellow,
+    color: colors.orange,
   },
   discardBtn: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
-import { colors, radius, spacing } from '@/theme/theme';
+import { colors, radius, spacing, shadow } from '@/theme/theme';
 import type { ReactNode } from 'react';
 
 interface BigButtonProps {
@@ -7,7 +7,7 @@ interface BigButtonProps {
   subtitle?: string;
   icon?: ReactNode;
   onPress: () => void;
-  variant?: 'yellow' | 'black' | 'white';
+  variant?: 'orange' | 'black' | 'white' | 'danger';
   loading?: boolean;
   disabled?: boolean;
 }
@@ -17,22 +17,24 @@ export function BigButton({
   subtitle,
   icon,
   onPress,
-  variant = 'yellow',
+  variant = 'orange',
   loading = false,
   disabled = false,
 }: BigButtonProps) {
   const bg =
-    variant === 'yellow'
-      ? colors.yellow
+    variant === 'orange'
+      ? colors.orange
       : variant === 'black'
         ? colors.black
-        : colors.white;
-  const textColor = variant === 'yellow' ? colors.black : colors.white;
-  const subColor = variant === 'yellow' ? 'rgba(26,26,26,0.7)' : 'rgba(255,255,255,0.7)';
+        : variant === 'danger'
+          ? colors.red
+          : colors.white;
+  const textColor = variant === 'white' ? colors.textDark : colors.white;
+  const subColor = variant === 'orange' ? 'rgba(255,255,255,0.8)' : variant === 'white' ? colors.grayText : 'rgba(255,255,255,0.7)';
 
   return (
     <TouchableOpacity
-      style={[styles.button, { backgroundColor: bg }]}
+      style={[styles.button, { backgroundColor: bg }, variant === 'white' && styles.whiteBorder, shadow.button]}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.85}
@@ -60,11 +62,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     minHeight: 80,
     justifyContent: 'center',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 5,
+  },
+  whiteBorder: {
+    borderWidth: 2,
+    borderColor: colors.grayBorder,
   },
   row: {
     flexDirection: 'row',

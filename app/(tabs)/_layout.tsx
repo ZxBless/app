@@ -7,20 +7,31 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.yellow,
+        tabBarActiveTintColor: colors.orange,
         tabBarInactiveTintColor: colors.grayText,
         tabBarStyle: {
-          backgroundColor: colors.black,
+          backgroundColor: colors.white,
           borderTopWidth: 0,
           height: 64,
           paddingBottom: 8,
+          paddingTop: 8,
+          elevation: 10,
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
         },
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+        tabBarIconStyle: { marginTop: 0 },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{ title: 'Cronómetro', tabBarIcon: ({ color, size }) => <Timer size={size} color={color} strokeWidth={2.5} /> }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{ title: 'Panel', tabBarIcon: ({ color, size }) => <History size={size} color={color} strokeWidth={2.5} /> }}
       />
       <Tabs.Screen
         name="history"

@@ -2,6 +2,7 @@ import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native
 import { Calendar } from 'lucide-react-native';
 import { colors, radius, spacing } from '@/theme/theme';
 import { useState } from 'react';
+import { TextInput } from 'react-native';
 
 interface Props {
   label: string;
@@ -24,9 +25,10 @@ export function DatePickerField({ label, value, onChange }: Props) {
             width: '100%',
             padding: '12px',
             borderRadius: '12px',
-            border: '2px solid #E0E0E0',
+            border: '2px solid #EEEEEE',
             fontSize: '16px',
             fontFamily: 'inherit',
+            backgroundColor: '#FFFFFF',
           }}
         />
       </View>
@@ -54,7 +56,7 @@ export function DatePickerField({ label, value, onChange }: Props) {
         </View>
       ) : (
         <TouchableOpacity style={styles.field} onPress={() => setEditing(true)}>
-          <Calendar size={20} color={colors.grayText} strokeWidth={2.5} />
+          <Calendar size={20} color={colors.orange} strokeWidth={2.5} />
           <Text style={styles.fieldText}>{value}</Text>
         </TouchableOpacity>
       )}
@@ -62,11 +64,9 @@ export function DatePickerField({ label, value, onChange }: Props) {
   );
 }
 
-import { TextInput } from 'react-native';
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  label: { fontSize: 13, fontWeight: '600', color: colors.textDark, marginBottom: 6 },
+  label: { fontSize: 13, fontWeight: '700', color: colors.grayText, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.grayBorder,
   },
-  fieldText: { fontSize: 16, fontWeight: '600', color: colors.textDark },
+  fieldText: { fontSize: 16, fontWeight: '700', color: colors.textDark },
   inputRow: { flexDirection: 'row', gap: spacing.xs },
   input: {
     flex: 1,
@@ -92,11 +92,11 @@ const styles = StyleSheet.create({
     color: colors.textDark,
   },
   doneBtn: {
-    backgroundColor: colors.black,
+    backgroundColor: colors.orange,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneText: { color: colors.yellow, fontWeight: '800', fontSize: 16 },
+  doneText: { color: colors.white, fontWeight: '800', fontSize: 16 },
 });
