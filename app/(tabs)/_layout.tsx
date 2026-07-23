@@ -27,7 +27,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: 'Cronómetro', tabBarIcon: ({ color, size }) => <Timer size={size} color={color} strokeWidth={2.5} /> }}
+        options={{ title: 'Time - Maquiche', tabBarIcon: ({ color, size }) => <Timer size={size} color={color} strokeWidth={2.5} /> }}
       />
       <Tabs.Screen
         name="dashboard"
