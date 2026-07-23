@@ -15,12 +15,19 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatHours(hours: number): string {
-  const totalMin = Math.round(hours * 60);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} h`;
-  return `${h} h ${m} min`;
+  return formatMsAsHHMMSS(hours * 3600000);
+}
+
+export function formatMsAsHHMMSS(totalMs: number): string {
+  const totalSec = Math.floor(totalMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export function calcPaymentFromMs(ms: number, ratePerHour: number): number {
+  return Math.round((ms / 3600000) * ratePerHour * 100) / 100;
 }
 
 export function formatDate(dateStr: string): string {

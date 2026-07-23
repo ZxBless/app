@@ -1,14 +1,9 @@
 import { Platform } from 'react-native';
 import type { WorkRecord } from '@/db/database';
-import { formatDate, formatHours, formatCurrency, WORK_TYPE_LABELS } from './calculations';
+import { formatDate, formatCurrency, WORK_TYPE_LABELS, formatMsAsHHMMSS } from './calculations';
 
 function formatDurationFromHours(hours: number): string {
-  const totalMin = Math.round(hours * 60);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} h`;
-  return `${h} h ${m} min`;
+  return formatMsAsHHMMSS(hours * 3600000);
 }
 
 function rateLabel(rate: number): string {
@@ -139,12 +134,14 @@ function buildHTML(records: WorkRecord[], dateRange?: { from: string; to: string
       <th class="right">Pago</th>
     </tr></thead><tbody>${rows}</tbody></table>
     <div class="summary"><h2>Resumen</h2>
-      <div class="summary-row"><span class="label">Total horas Excavación:</span><span class="value">${formatHours(excHours)}</span></div>
-      <div class="summary-row"><span class="label">Pago total Excavación:</span><span class="value">${formatCurrency(excPayment)}</span></div>
+      <div class="summary-row"><span class="label">Tiempo Excavación:</span><span class="value">${formatDurationFromHours(excHours)}</span></div>
+      <div class="summary-row"><span class="label">Pago Excavación:</span><span class="value">${formatCurrency(excPayment)}</span></div>
       <div class="summary-divider"></div>
-      <div class="summary-row"><span class="label">Total horas Martillo Hidráulico:</span><span class="value">${formatHours(martHours)}</span></div>
-      <div class="summary-row"><span class="label">Pago total Martillo Hidráulico:</span><span class="value">${formatCurrency(martPayment)}</span></div>
-      <div class="grand-total"><span class="label">TOTAL GENERAL</span><span class="value">${formatCurrency(totalPayment)}</span></div>
+      <div class="summary-row"><span class="label">Tiempo Martillo Hidráulico:</span><span class="value">${formatDurationFromHours(martHours)}</span></div>
+      <div class="summary-row"><span class="label">Pago Martillo Hidráulico:</span><span class="value">${formatCurrency(martPayment)}</span></div>
+      <div class="summary-divider"></div>
+      <div class="summary-row"><span class="label">Tiempo Total:</span><span class="value">${formatDurationFromHours(totalHours)}</span></div>
+      <div class="grand-total"><span class="label">Pago Total</span><span class="value">${formatCurrency(totalPayment)}</span></div>
     </div>
     <div class="footer">Documento generado por MAQUICHE &middot; ${new Date().toLocaleDateString('es-PE')}</div>
   </body></html>`;
@@ -171,7 +168,8 @@ function buildCSV(records: WorkRecord[]): string {
     r.startTime, r.endTime, formatDurationFromHours(r.hours),
     formatCurrency(r.rate) + '/h', r.payment.toFixed(2), r.observation ?? '',
   ].map(csvEscape).join(',')).join('\n');
-  const summary = `\n\nRESUMEN\nTotal horas Excavación,${excHours.toFixed(2)}\nTotal horas Martillo Hidráulico,${martHours.toFixed(2)}\nPago total Excavación,S/${excPayment.toFixed(2)}\nPago total Martillo Hidráulico,S/${martPayment.toFixed(2)}\nTOTAL GENERAL,S/${grandTotal.toFixed(2)}`;
+  const totalHours = excHours + martHours;
+  const summary = `\n\nRESUMEN\nTiempo Excavación,${formatDurationFromHours(excHours)}\nPago Excavación,S/${excPayment.toFixed(2)}\nTiempo Martillo Hidráulico,${formatDurationFromHours(martHours)}\nPago Martillo Hidráulico,S/${martPayment.toFixed(2)}\nTiempo Total,${formatDurationFromHours(totalHours)}\nPago Total,S/${grandTotal.toFixed(2)}`;
   return '\uFEFF' + header + rows + summary;
 }
 

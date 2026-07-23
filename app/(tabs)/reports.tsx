@@ -5,7 +5,7 @@ import { FileText, FileSpreadsheet, Calendar, Pickaxe, Hammer, TrendingUp } from
 import { colors, radius, spacing, shadow } from '@/theme/theme';
 import { DatePickerField } from '@/components/DatePickerField';
 import { getRecordsByDateRange, type WorkRecord } from '@/db/database';
-import { buildMultiDaySummary, formatDate, formatHours, formatCurrency, WORK_TYPE_LABELS, type DaySummary } from '@/utils/calculations';
+import { buildMultiDaySummary, formatDate, formatMsAsHHMMSS, formatCurrency, WORK_TYPE_LABELS, type DaySummary } from '@/utils/calculations';
 import { exportPDF, exportExcel } from '@/utils/exports';
 import { todayString } from '@/utils/calculations';
 
@@ -153,13 +153,13 @@ export default function ReportsScreen() {
             <View style={styles.summaryCard}>
               <Pickaxe size={22} color={colors.orange} strokeWidth={2.5} />
               <Text style={styles.summaryCardLabel}>Excavación</Text>
-              <Text style={styles.summaryCardHours}>{formatHours(totalExcavacion)}</Text>
+              <Text style={styles.summaryCardHours}>{formatMsAsHHMMSS(totalExcavacion)}</Text>
               <Text style={styles.summaryCardPayment}>{formatCurrency(totalExcavacionPayment)}</Text>
             </View>
             <View style={styles.summaryCard}>
               <Hammer size={22} color={colors.black} strokeWidth={2.5} />
               <Text style={styles.summaryCardLabel}>Martillo</Text>
-              <Text style={styles.summaryCardHours}>{formatHours(totalMartillo)}</Text>
+              <Text style={styles.summaryCardHours}>{formatMsAsHHMMSS(totalMartillo)}</Text>
               <Text style={styles.summaryCardPayment}>{formatCurrency(totalMartilloPayment)}</Text>
             </View>
           </View>
@@ -169,7 +169,7 @@ export default function ReportsScreen() {
               <TrendingUp size={24} color={colors.white} strokeWidth={2.5} />
               <View>
                 <Text style={styles.grandTotalLabel}>Total general</Text>
-                <Text style={styles.grandTotalHours}>{formatHours(totalHours)} trabajadas</Text>
+                <Text style={styles.grandTotalHours}>{formatMsAsHHMMSS(totalHours)} trabajadas</Text>
               </View>
             </View>
             <Text style={styles.grandTotalValue}>{formatCurrency(grandTotal)}</Text>
@@ -193,7 +193,7 @@ export default function ReportsScreen() {
               </View>
               <Text style={[styles.tableCell, styles.colSmall]}>{r.startTime}</Text>
               <Text style={[styles.tableCell, styles.colSmall]}>{r.endTime}</Text>
-              <Text style={[styles.tableCell, styles.colMed]}>{formatHours(r.hours)}</Text>
+              <Text style={[styles.tableCell, styles.colMed]}>{formatMsAsHHMMSS(r.hours)}</Text>
               <Text style={[styles.tableCell, styles.rightCol, styles.paymentCell]}>{formatCurrency(r.payment)}</Text>
             </View>
           ))}
@@ -208,8 +208,8 @@ export default function ReportsScreen() {
           {summaries.map((s) => (
             <View key={s.date} style={styles.tableRow}>
               <Text style={[styles.tableCell, { flex: 1 }]}>{formatDate(s.date)}</Text>
-              <Text style={[styles.tableCell, styles.rightCol]}>{formatHours(s.excavacionHours)}</Text>
-              <Text style={[styles.tableCell, styles.rightCol]}>{formatHours(s.martilloHours)}</Text>
+              <Text style={[styles.tableCell, styles.rightCol]}>{formatMsAsHHMMSS(s.excavacionHours)}</Text>
+              <Text style={[styles.tableCell, styles.rightCol]}>{formatMsAsHHMMSS(s.martilloHours)}</Text>
               <Text style={[styles.tableCell, styles.rightCol, styles.paymentCell]}>{formatCurrency(s.totalPayment)}</Text>
             </View>
           ))}

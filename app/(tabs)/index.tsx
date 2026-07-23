@@ -23,11 +23,12 @@ import {
   type PersistedSegment,
 } from '@/db/database';
 import {
-  formatHours,
+  formatMsAsHHMMSS,
   formatCurrency,
   todayString,
   tsToTimeString,
   WORK_TYPE_LABELS,
+  calcPaymentFromMs,
 } from '@/utils/calculations';
 
 type ScreenState = 'idle' | 'running' | 'paused' | 'stopped';
@@ -39,22 +40,7 @@ interface Segment {
   endTime: string;
 }
 
-function formatDuration(totalMs: number): string {
-  const totalMin = Math.floor(totalMs / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} h`;
-  return `${h} h ${m} min`;
-}
-
-function formatTimer(totalMs: number): string {
-  const totalSec = Math.floor(totalMs / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+const formatTimer = formatMsAsHHMMSS;
 
 export default function CronometroScreen() {
   const [screenState, setScreenState] = useState<ScreenState>('idle');
@@ -340,10 +326,8 @@ export default function CronometroScreen() {
 
   const perToolMs = computePerToolMs();
   const totalMs = perToolMs.excavacion + perToolMs.martillo;
-  const excHours = perToolMs.excavacion / 3600000;
-  const martHours = perToolMs.martillo / 3600000;
-  const excPayment = excHours * rates.excavacion;
-  const martPayment = martHours * rates.martillo;
+  const excPayment = calcPaymentFromMs(perToolMs.excavacion, rates.excavacion);
+  const martPayment = calcPaymentFromMs(perToolMs.martillo, rates.martillo);
   const totalPayment = excPayment + martPayment;
   const canSwitchTools = screenState === 'idle' || screenState === 'running' || screenState === 'paused';
 
@@ -422,24 +406,36 @@ export default function CronometroScreen() {
       {(screenState === 'running' || screenState === 'paused') && (
         <View style={styles.breakdownCard}>
           <Text style={styles.breakdownTitle}>Desglose por herramienta</Text>
-          <View style={[styles.breakdownRow, activeWorkType === 'excavacion' && styles.breakdownRowActive]}>
-            <View style={styles.breakdownLeft}>
-              <Pickaxe size={18} color={colors.textDark} strokeWidth={2.5} />
+          <View style={[styles.breakdownItem, activeWorkType === 'excavacion' && styles.breakdownItemActive]}>
+            <View style={styles.breakdownHeader}>
+              <Pickaxe size={18} color={colors.orange} strokeWidth={2.5} />
               <Text style={styles.breakdownName}>{WORK_TYPE_LABELS.excavacion}</Text>
             </View>
-            <View style={styles.breakdownRight}>
-              <Text style={styles.breakdownTime}>{formatTimer(perToolMs.excavacion)}</Text>
-              <Text style={styles.breakdownPayment}>{formatCurrency(excPayment)}</Text>
+            <View style={styles.breakdownStats}>
+              <View style={styles.breakdownStatRow}>
+                <Text style={styles.breakdownStatLabel}>Tiempo</Text>
+                <Text style={styles.breakdownStatValue}>{formatTimer(perToolMs.excavacion)}</Text>
+              </View>
+              <View style={styles.breakdownStatRow}>
+                <Text style={styles.breakdownStatLabel}>Pago</Text>
+                <Text style={styles.breakdownStatValue}>{formatCurrency(excPayment)}</Text>
+              </View>
             </View>
           </View>
-          <View style={[styles.breakdownRow, activeWorkType === 'martillo' && styles.breakdownRowActive]}>
-            <View style={styles.breakdownLeft}>
-              <Hammer size={18} color={colors.textDark} strokeWidth={2.5} />
+          <View style={[styles.breakdownItem, activeWorkType === 'martillo' && styles.breakdownItemActive]}>
+            <View style={styles.breakdownHeader}>
+              <Hammer size={18} color={colors.black} strokeWidth={2.5} />
               <Text style={styles.breakdownName}>{WORK_TYPE_LABELS.martillo}</Text>
             </View>
-            <View style={styles.breakdownRight}>
-              <Text style={styles.breakdownTime}>{formatTimer(perToolMs.martillo)}</Text>
-              <Text style={styles.breakdownPayment}>{formatCurrency(martPayment)}</Text>
+            <View style={styles.breakdownStats}>
+              <View style={styles.breakdownStatRow}>
+                <Text style={styles.breakdownStatLabel}>Tiempo</Text>
+                <Text style={styles.breakdownStatValue}>{formatTimer(perToolMs.martillo)}</Text>
+              </View>
+              <View style={styles.breakdownStatRow}>
+                <Text style={styles.breakdownStatLabel}>Pago</Text>
+                <Text style={styles.breakdownStatValue}>{formatCurrency(martPayment)}</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -517,77 +513,87 @@ export default function CronometroScreen() {
       {screenState === 'stopped' && (
         <>
           <View style={styles.segmentsCard}>
-            <Text style={styles.segmentsTitle}>Tramos del turno</Text>
+            <Text style={styles.segmentsTitle}>Detalle de Tramos</Text>
+            <View style={styles.segTableHeader}>
+              <Text style={[styles.segTableHeaderText, styles.segColTool]}>Herramienta</Text>
+              <Text style={[styles.segTableHeaderText, styles.segColSmall]}>Inicio</Text>
+              <Text style={[styles.segTableHeaderText, styles.segColSmall]}>Fin</Text>
+              <Text style={[styles.segTableHeaderText, styles.segColMed]}>Duración</Text>
+              <Text style={[styles.segTableHeaderText, styles.segColPayment]}>Pago</Text>
+            </View>
             {segmentsRef.current.map((seg, i) => {
-              const segHours = seg.ms / 3600000;
               const segRate = seg.workType === 'excavacion' ? rates.excavacion : rates.martillo;
-              const segPayment = segHours * segRate;
+              const segPayment = calcPaymentFromMs(seg.ms, segRate);
               return (
-                <View key={i} style={styles.segmentRow}>
-                  <View style={styles.segmentHeader}>
+                <View key={i} style={styles.segTableRow}>
+                  <View style={[styles.segColTool, styles.segToolCell]}>
                     {seg.workType === 'excavacion' ? (
-                      <Pickaxe size={16} color={colors.orange} strokeWidth={2.5} />
+                      <Pickaxe size={14} color={colors.orange} strokeWidth={2.5} />
                     ) : (
-                      <Hammer size={16} color={colors.orange} strokeWidth={2.5} />
+                      <Hammer size={14} color={colors.black} strokeWidth={2.5} />
                     )}
-                    <Text style={styles.segmentToolName}>
-                      {WORK_TYPE_LABELS[seg.workType]}
+                    <Text style={styles.segToolText} numberOfLines={1}>
+                      {seg.workType === 'excavacion' ? 'Excav.' : 'Martillo'}
                     </Text>
-                    <Text style={styles.segmentIndex}>#{i + 1}</Text>
                   </View>
-                  <View style={styles.segmentDetails}>
-                    <View style={styles.segmentDetailRow}>
-                      <Text style={styles.segmentDetailLabel}>Inicio</Text>
-                      <Text style={styles.segmentDetailValue}>{seg.startTime}</Text>
-                    </View>
-                    <View style={styles.segmentDetailRow}>
-                      <Text style={styles.segmentDetailLabel}>Fin</Text>
-                      <Text style={styles.segmentDetailValue}>{seg.endTime}</Text>
-                    </View>
-                    <View style={styles.segmentDetailRow}>
-                      <Text style={styles.segmentDetailLabel}>Duración</Text>
-                      <Text style={styles.segmentDetailValue}>{formatDuration(seg.ms)}</Text>
-                    </View>
-                    <View style={styles.segmentDetailRow}>
-                      <Text style={styles.segmentDetailLabel}>Pago</Text>
-                      <Text style={styles.segmentDetailValueBold}>{formatCurrency(segPayment)}</Text>
-                    </View>
-                  </View>
+                  <Text style={[styles.segColSmall, styles.segCell]}>{seg.startTime}</Text>
+                  <Text style={[styles.segColSmall, styles.segCell]}>{seg.endTime}</Text>
+                  <Text style={[styles.segColMed, styles.segCell]}>{formatMsAsHHMMSS(seg.ms)}</Text>
+                  <Text style={[styles.segColPayment, styles.segCell, styles.segPaymentCell]}>{formatCurrency(segPayment)}</Text>
                 </View>
               );
             })}
           </View>
 
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Totales por herramienta</Text>
+            <Text style={styles.summaryTitle}>Resumen</Text>
 
             {perToolMs.excavacion > 0 && (
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryLeft}>
-                  <Pickaxe size={18} color={colors.orange} strokeWidth={2.5} />
-                  <Text style={styles.summaryName}>{WORK_TYPE_LABELS.excavacion}</Text>
+              <>
+                <View style={styles.summaryBlock}>
+                  <View style={styles.summaryBlockHeader}>
+                    <Pickaxe size={18} color={colors.orange} strokeWidth={2.5} />
+                    <Text style={styles.summaryBlockName}>{WORK_TYPE_LABELS.excavacion}</Text>
+                  </View>
+                  <View style={styles.summaryBlockRow}>
+                    <Text style={styles.summaryBlockLabel}>Tiempo</Text>
+                    <Text style={styles.summaryBlockValue}>{formatMsAsHHMMSS(perToolMs.excavacion)}</Text>
+                  </View>
+                  <View style={styles.summaryBlockRow}>
+                    <Text style={styles.summaryBlockLabel}>Pago</Text>
+                    <Text style={styles.summaryBlockValue}>{formatCurrency(excPayment)}</Text>
+                  </View>
                 </View>
-                <Text style={styles.summaryHours}>{formatHours(excHours)}</Text>
-                <Text style={styles.summaryPayment}>{formatCurrency(excPayment)}</Text>
-              </View>
+                <View style={styles.summaryBlockDivider} />
+              </>
             )}
 
             {perToolMs.martillo > 0 && (
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryLeft}>
-                  <Hammer size={18} color={colors.orange} strokeWidth={2.5} />
-                  <Text style={styles.summaryName}>{WORK_TYPE_LABELS.martillo}</Text>
+              <>
+                <View style={styles.summaryBlock}>
+                  <View style={styles.summaryBlockHeader}>
+                    <Hammer size={18} color={colors.orange} strokeWidth={2.5} />
+                    <Text style={styles.summaryBlockName}>{WORK_TYPE_LABELS.martillo}</Text>
+                  </View>
+                  <View style={styles.summaryBlockRow}>
+                    <Text style={styles.summaryBlockLabel}>Tiempo</Text>
+                    <Text style={styles.summaryBlockValue}>{formatMsAsHHMMSS(perToolMs.martillo)}</Text>
+                  </View>
+                  <View style={styles.summaryBlockRow}>
+                    <Text style={styles.summaryBlockLabel}>Pago</Text>
+                    <Text style={styles.summaryBlockValue}>{formatCurrency(martPayment)}</Text>
+                  </View>
                 </View>
-                <Text style={styles.summaryHours}>{formatHours(martHours)}</Text>
-                <Text style={styles.summaryPayment}>{formatCurrency(martPayment)}</Text>
-              </View>
+                <View style={styles.summaryBlockDivider} />
+              </>
             )}
 
-            <View style={styles.summaryDivider} />
-
             <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Total general</Text>
-              <Text style={styles.summaryTotalHours}>{formatHours(excHours + martHours)}</Text>
+              <Text style={styles.summaryTotalLabel}>Tiempo Total</Text>
+              <Text style={styles.summaryTotalValue}>{formatMsAsHHMMSS(perToolMs.excavacion + perToolMs.martillo)}</Text>
+            </View>
+            <View style={styles.summaryTotalRow}>
+              <Text style={styles.summaryTotalLabel}>Pago Total</Text>
               <Text style={styles.summaryTotalPayment}>{formatCurrency(totalPayment)}</Text>
             </View>
           </View>
@@ -772,44 +778,46 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
   },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
+  breakdownItem: {
     borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 2,
+    borderColor: colors.grayBorder,
   },
-  breakdownRowActive: {
-    backgroundColor: colors.orangeDim,
+  breakdownItemActive: {
+    borderColor: colors.orange,
+    backgroundColor: colors.orangeBg,
   },
-  breakdownLeft: {
+  breakdownHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   breakdownName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: colors.textDark,
   },
-  breakdownRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+  breakdownStats: {
+    paddingLeft: spacing.sm,
   },
-  breakdownTime: {
-    fontSize: 15,
+  breakdownStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  breakdownStatLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  breakdownStatValue: {
+    fontSize: 14,
     fontWeight: '700',
     color: colors.textDark,
     fontVariant: ['tabular-nums'],
-  },
-  breakdownPayment: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.orangeDark,
-    minWidth: 80,
-    textAlign: 'right',
   },
   startBtn: {
     flex: 1,
@@ -916,54 +924,56 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
   },
-  segmentRow: {
-    backgroundColor: colors.grayBg,
+  segTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: colors.black,
     borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  segmentHeader: {
-    flexDirection: 'row',
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.xs,
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
   },
-  segmentToolName: {
-    fontSize: 15,
+  segTableHeaderText: {
+    fontSize: 11,
     fontWeight: '800',
-    color: colors.textDark,
-    flex: 1,
+    color: colors.orange,
+    textTransform: 'uppercase',
   },
-  segmentIndex: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.grayText,
-  },
-  segmentDetails: {
-    gap: spacing.xs,
-  },
-  segmentDetailRow: {
+  segTableRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    marginBottom: 2,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
   },
-  segmentDetailLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.grayText,
+  segToolCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  segmentDetailValue: {
-    fontSize: 14,
+  segToolText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: colors.textDark,
+  },
+  segCell: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.textDark,
     fontVariant: ['tabular-nums'],
   },
-  segmentDetailValueBold: {
-    fontSize: 15,
+  segPaymentCell: {
     fontWeight: '800',
     color: colors.orangeDark,
-    fontVariant: ['tabular-nums'],
   },
+  segColTool: { flex: 1.2 },
+  segColSmall: { width: 52, textAlign: 'center' },
+  segColMed: { width: 72, textAlign: 'center' },
+  segColPayment: { width: 72, textAlign: 'right' },
   summaryCard: {
     backgroundColor: colors.black,
     borderRadius: radius.lg,
@@ -977,65 +987,64 @@ const styles = StyleSheet.create({
     color: colors.white,
     marginBottom: spacing.md,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
+  summaryBlock: {
+    marginBottom: spacing.sm,
   },
-  summaryLeft: {
+  summaryBlockHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    flex: 1,
+    marginBottom: spacing.xs,
   },
-  summaryName: {
+  summaryBlockName: {
     fontSize: 15,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '800',
+    color: colors.white,
   },
-  summaryHours: {
-    fontSize: 15,
+  summaryBlockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+    paddingLeft: spacing.sm,
+  },
+  summaryBlockLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.7)',
+  },
+  summaryBlockValue: {
+    fontSize: 14,
     fontWeight: '700',
     color: colors.white,
-    width: 70,
-    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
-  summaryPayment: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.orange,
-    width: 100,
-    textAlign: 'right',
-  },
-  summaryDivider: {
+  summaryBlockDivider: {
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.15)',
     marginVertical: spacing.sm,
   },
   summaryTotalRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.xs,
   },
   summaryTotalLabel: {
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: 16,
+    fontWeight: '800',
     color: colors.white,
-    flex: 1,
   },
-  summaryTotalHours: {
+  summaryTotalValue: {
     fontSize: 18,
     fontWeight: '900',
     color: colors.white,
-    width: 70,
-    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
   summaryTotalPayment: {
     fontSize: 22,
     fontWeight: '900',
     color: colors.orange,
-    width: 100,
-    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
   textInputBtn: {
     alignItems: 'center',

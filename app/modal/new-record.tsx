@@ -5,7 +5,7 @@ import { Save, Pickaxe, Hammer, ChevronLeft } from 'lucide-react-native';
 import { colors, radius, spacing, shadow } from '@/theme/theme';
 import { TimePicker } from '@/components/TimePicker';
 import { getSettings, getRecordById, insertRecord, updateRecord, type WorkType, type Settings } from '@/db/database';
-import { todayString, WORK_TYPE_LABELS } from '@/utils/calculations';
+import { todayString, WORK_TYPE_LABELS, formatMsAsHHMMSS, calcPaymentFromMs } from '@/utils/calculations';
 import { DatePickerField } from '@/components/DatePickerField';
 
 export default function NewRecordScreen() {
@@ -41,20 +41,22 @@ export default function NewRecordScreen() {
 
   useEffect(() => { loadRecord(); }, [loadRecord]);
 
-  const calcHours = () => {
+  const calcMs = () => {
     const [sh, sm] = startTime.split(':').map(Number);
     const [eh, em] = endTime.split(':').map(Number);
     let mins = eh * 60 + em - (sh * 60 + sm);
     if (mins < 0) mins += 24 * 60;
-    return mins / 60;
+    return mins * 60 * 1000;
   };
+  const calcHours = () => calcMs() / 3600000;
 
   const handleSave = async () => {
     if (!date || !startTime || !endTime) { Alert.alert('Error', 'Completa todos los campos obligatorios.'); return; }
-    const hours = calcHours();
-    if (hours <= 0) { Alert.alert('Error', 'La hora de fin debe ser mayor que la de inicio.'); return; }
+    const ms = calcMs();
+    if (ms <= 0) { Alert.alert('Error', 'La hora de fin debe ser mayor que la de inicio.'); return; }
     const rate = workType === 'excavacion' ? rates.excavacion : rates.martillo;
-    const payment = Math.round(hours * rate * 100) / 100;
+    const payment = calcPaymentFromMs(ms, rate);
+    const hours = ms / 3600000;
     const record = { date, startTime, endTime, workType, observation: observation.trim() || null, hours, payment, rate, client: client.trim() || null, project: project.trim() || null, operator: operator.trim() || null };
     setSaving(true);
     try {
@@ -118,10 +120,10 @@ export default function NewRecordScreen() {
 
       <View style={styles.previewBox}>
         <Text style={styles.previewTitle}>Resumen</Text>
-        <View style={styles.previewRow}><Text style={styles.previewLabel}>Duración</Text><Text style={styles.previewValue}>{calcHours().toFixed(2)} h</Text></View>
+        <View style={styles.previewRow}><Text style={styles.previewLabel}>Duración</Text><Text style={styles.previewValue}>{formatMsAsHHMMSS(calcMs())}</Text></View>
         <View style={styles.previewRow}><Text style={styles.previewLabel}>Tarifa</Text><Text style={styles.previewValue}>{formatRate(workType === 'excavacion' ? rates.excavacion : rates.martillo)}/h</Text></View>
         <View style={styles.previewDivider} />
-        <View style={styles.previewRow}><Text style={styles.previewTotalLabel}>Pago total</Text><Text style={styles.previewTotalValue}>{formatPayment(calcHours() * (workType === 'excavacion' ? rates.excavacion : rates.martillo))}</Text></View>
+        <View style={styles.previewRow}><Text style={styles.previewTotalLabel}>Pago total</Text><Text style={styles.previewTotalValue}>{formatPayment(calcPaymentFromMs(calcMs(), workType === 'excavacion' ? rates.excavacion : rates.martillo))}</Text></View>
       </View>
 
       <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.85}>

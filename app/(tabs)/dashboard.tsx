@@ -4,7 +4,8 @@ import { useFocusEffect } from 'expo-router';
 import { TrendingUp, TrendingDown, Target, Clock, DollarSign, Pickaxe, Hammer, Calendar } from 'lucide-react-native';
 import { colors, radius, spacing, shadow } from '@/theme/theme';
 import { getRecordsByDateRange, getSettings, type Settings, type WorkRecord } from '@/db/database';
-import { formatHours, formatCurrency } from '@/utils/calculations';
+import { formatCurrency } from '@/utils/calculations';
+import { formatMsAsHHMMSS } from '@/utils/calculations';
 
 type Period = 'day' | 'week' | 'month';
 
@@ -218,7 +219,7 @@ export default function DashboardScreen() {
             <Clock size={18} color={colors.orange} strokeWidth={2.5} />
             <Text style={styles.statLabel}>Horas</Text>
           </View>
-          <Text style={styles.statValue}>{formatHours(current?.totalHours ?? 0)}</Text>
+          <Text style={styles.statValue}>{formatMsAsHHMMSS(current?.totalHours ?? 0)}</Text>
           <View style={styles.trendRow}>
             {hoursVsPrev >= 0 ? (
               <TrendingUp size={14} color={colors.green} strokeWidth={2.5} />
@@ -226,7 +227,7 @@ export default function DashboardScreen() {
               <TrendingDown size={14} color={colors.red} strokeWidth={2.5} />
             )}
             <Text style={[styles.trendText, { color: hoursVsPrev >= 0 ? colors.green : colors.red }]}>
-              {hoursVsPrev >= 0 ? '+' : ''}{formatHours(Math.abs(hoursVsPrev))}
+              {hoursVsPrev >= 0 ? '+' : ''}{formatMsAsHHMMSS(Math.abs(hoursVsPrev))}
             </Text>
           </View>
         </View>
@@ -257,8 +258,8 @@ export default function DashboardScreen() {
             <Text style={styles.progressTitle}>Objetivo semanal</Text>
           </View>
           <Text style={styles.progressValue}>
-            {formatHours(current?.totalHours ?? 0)}{' '}
-            <Text style={styles.progressGoal}>/ {formatHours(goal)}</Text>
+            {formatMsAsHHMMSS(current?.totalHours ?? 0)}{' '}
+            <Text style={styles.progressGoal}>/ {formatMsAsHHMMSS(goal)}</Text>
           </Text>
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
@@ -275,7 +276,7 @@ export default function DashboardScreen() {
               <Pickaxe size={20} color={colors.orange} strokeWidth={2.5} />
             </View>
             <Text style={styles.breakdownName}>Excavación</Text>
-            <Text style={styles.breakdownValue}>{formatHours(current?.excavacionHours ?? 0)}</Text>
+            <Text style={styles.breakdownValue}>{formatMsAsHHMMSS(current?.excavacionHours ?? 0)}</Text>
             <Text style={styles.breakdownPct}>{excPct}%</Text>
           </View>
           <View style={styles.breakdownItem}>
@@ -283,7 +284,7 @@ export default function DashboardScreen() {
               <Hammer size={20} color={colors.orange} strokeWidth={2.5} />
             </View>
             <Text style={styles.breakdownName}>Martillo</Text>
-            <Text style={styles.breakdownValue}>{formatHours(current?.martilloHours ?? 0)}</Text>
+            <Text style={styles.breakdownValue}>{formatMsAsHHMMSS(current?.martilloHours ?? 0)}</Text>
             <Text style={styles.breakdownPct}>{martPct}%</Text>
           </View>
         </View>
@@ -304,7 +305,7 @@ export default function DashboardScreen() {
               return (
                 <View key={d.date} style={styles.barCol}>
                   <View style={styles.barValueWrap}>
-                    <Text style={styles.barValue}>{formatHours(d.hours)}</Text>
+                    <Text style={styles.barValue}>{formatMsAsHHMMSS(d.hours)}</Text>
                   </View>
                   <View style={styles.barBg}>
                     <View style={[styles.barFill, { height: barHeight }]} />

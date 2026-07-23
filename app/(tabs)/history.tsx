@@ -5,7 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { Search, Pencil, Trash2, Calendar, Pickaxe, Hammer, Plus } from 'lucide-react-native';
 import { colors, radius, spacing, shadow } from '@/theme/theme';
 import { getAllRecords, deleteRecord, type WorkRecord } from '@/db/database';
-import { buildMultiDaySummary, formatDate, formatHours, formatCurrency, WORK_TYPE_SHORT, type DaySummary } from '@/utils/calculations';
+import { buildMultiDaySummary, formatDate, formatMsAsHHMMSS, formatCurrency, WORK_TYPE_SHORT, type DaySummary } from '@/utils/calculations';
 import { ConfirmModal } from '@/components/ConfirmModal';
 
 export default function HistoryScreen() {
@@ -68,7 +68,7 @@ export default function HistoryScreen() {
                 <View style={styles.dayHeader}>
                   <View>
                     <Text style={styles.dayDate}>{formatDate(summary.date)}</Text>
-                    <Text style={styles.daySubtext}>{summary.recordCount} registro(s) - {formatHours(summary.totalHours)}</Text>
+                    <Text style={styles.daySubtext}>{summary.recordCount} registro(s) - {formatMsAsHHMMSS(summary.totalHours)}</Text>
                   </View>
                   <View style={styles.dayTotal}>
                     <Text style={styles.dayTotalValue}>{formatCurrency(summary.totalPayment)}</Text>
@@ -89,7 +89,7 @@ export default function HistoryScreen() {
                       </View>
                       <View style={styles.recordInfo}>
                         <Text style={styles.recordType}>{WORK_TYPE_SHORT[rec.workType]}</Text>
-                        <Text style={styles.recordTime}>{rec.startTime} - {rec.endTime} - {formatHours(rec.hours)}</Text>
+                        <Text style={styles.recordTime}>{rec.startTime} - {rec.endTime} - {formatMsAsHHMMSS(rec.hours)}</Text>
                         {rec.client ? <Text style={styles.recordMeta} numberOfLines={1}>{rec.client}{rec.project ? ` - ${rec.project}` : ''}</Text> : null}
                         {rec.observation ? <Text style={styles.recordObs} numberOfLines={1}>{rec.observation}</Text> : null}
                       </View>
